@@ -37,7 +37,7 @@ const (
 	gameOver
 )
 
-// scanner - scan into the chanel in separate goroutine
+// scanner scans input into the chanel in separate goroutine
 func scanner(stopScan <-chan interface{}) <-chan string {
 	lines := make(chan string)
 	go func(stopScan <-chan interface{}, lines chan<- string) {
@@ -61,9 +61,9 @@ func scanner(stopScan <-chan interface{}) <-chan string {
 	return lines
 }
 
-// waitJoinGame - initiate joining to a game.
+// waitJoinGame initiates joining to a game.
 // returns chanel to report on success or failure and
-// function of cancellation
+// function of cancellation.
 func waitJoinGame(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
 	waitEnded := make(chan interface{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -80,9 +80,9 @@ func waitJoinGame(client api.GoGameClient) (<-chan interface{}, context.CancelFu
 	return waitEnded, cancel
 }
 
-// waitTurnBegin - initiate awaiting of player's turn.
+// waitTurnBegin initiates awaiting of player's turn.
 // returns chanel to report on success or failure and
-// function of cancellation
+// function of cancellation.
 func waitTurnBegin(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
 	waitEnded := make(chan interface{})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -99,7 +99,7 @@ func waitTurnBegin(client api.GoGameClient) (<-chan interface{}, context.CancelF
 	return waitEnded, cancel
 }
 
-// gameState - type to hold current state of the game
+// gameState is type to hold current state of the game.
 type gameState struct {
 	client api.GoGameClient
 	//currentMode
@@ -112,7 +112,7 @@ type gameState struct {
 	msg string
 }
 
-// printInvitation - prints invitation before accept user input
+// printInvitation prints invitation before accept user input.
 func (state *gameState) printInvitation() {
 	msg := "IF YOU CAN SEE IT: The author is an IDIOT"
 	switch state.currentMode {
@@ -130,7 +130,7 @@ func (state *gameState) printInvitation() {
 	fmt.Println(msg)
 }
 
-//release resources, if any
+//releaseWaitingResources releases resources, if any.
 func (state *gameState) releaseWaitingResources() {
 	state.gameWaiter = nil
 	if state.cancel != nil {
@@ -139,12 +139,12 @@ func (state *gameState) releaseWaitingResources() {
 	}
 }
 
-//release game specific resources
+//releaseGameResources releases game specific resources.
 func (state *gameState) releaseGameResources() {
 	if state.currentMode == waitTurn || state.currentMode == performTurn || state.currentMode == gameOver {
 		if _, err := state.client.LeaveTheGame(context.Background(), &api.EmptyMessage{}); err != nil {
 			st := status.Convert(err)
-			fmt.Println("error, while leaving a game: %v: %s", st.Code(), st.Message())
+			fmt.Println("Error, while leaving a game: %v: %s", st.Code(), st.Message())
 		} else {
 			state.currentMode = noGame
 		}
@@ -152,6 +152,7 @@ func (state *gameState) releaseGameResources() {
 	fmt.Println("Leave The game...")
 }
 
+// processWaitResult waits of waiting function result and process it.
 func (state *gameState) processWaitResult(rez interface{}) {
 	switch state.currentMode {
 	case waitJoin:
@@ -173,6 +174,7 @@ func (state *gameState) processWaitResult(rez interface{}) {
 
 }
 
+// processKey processes scanned line to find command allowed in current mode.
 func (state *gameState) processKey(txt string) bool {
 	//turn
 	var x, y, n int
@@ -206,7 +208,7 @@ func (state *gameState) processKey(txt string) bool {
 				fmt.Println(st.Message())
 				break
 			}
-			fmt.Println("error, while leaving a game: %v: %s", st.Code(), st.Message())
+			fmt.Println("Error, while leaving a game: %v: %s", st.Code(), st.Message())
 		}
 		state.currentMode = waitTurn
 		state.gameWaiter, state.cancel = waitTurnBegin(state.client)
@@ -217,7 +219,7 @@ func (state *gameState) processKey(txt string) bool {
 	return true
 }
 
-// select a game type and initiate it
+// manageGame selects a game type, initiate and manage it.
 func manageGame(client api.GoGameClient, quit <-chan interface{}) error {
 	//greetings
 	fmt.Println("Whelcome to a Go game")
@@ -227,7 +229,7 @@ func manageGame(client api.GoGameClient, quit <-chan interface{}) error {
 	defer state.releaseGameResources()
 	state.printInvitation()
 
-	//asynchronous scanning of user commands
+	//asynchronous scanning of user commands.
 	stopScan := make(chan interface{})
 	cmdLines := scanner(stopScan)
 	defer func(stopScan chan<- interface{}) {
@@ -238,18 +240,18 @@ func manageGame(client api.GoGameClient, quit <-chan interface{}) error {
 	process := true
 	for process == true {
 		select {
-		//parse user commands
+		//parse user commands.
 		case txt := <-cmdLines:
 			process = state.processKey(txt)
-		//wait for continious actions
+		//wait for continious actions.
 		case rez := <-state.gameWaiter:
 			state.releaseWaitingResources()
 			state.processWaitResult(rez)
-		//OS quit signal interseptor
+		//OS quit signal interseptor.
 		case <-quit:
 			process = false
 		}
-		// print a messagi according to current state
+		// print a messagi according to current state.
 		state.printInvitation()
 	}
 

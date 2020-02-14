@@ -30,13 +30,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Authentication holds the login/password
+// Authentication holds the login/password.
 type Authentication struct {
 	Login    string
 	Password string
 }
 
-// GetRequestMetadata gets the current request metadata
+// GetRequestMetadata gets the current request metadata.
 func (a *Authentication) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
 	return map[string]string{
 		"login":    a.Login,
@@ -44,19 +44,20 @@ func (a *Authentication) GetRequestMetadata(context.Context, ...string) (map[str
 	}, nil
 }
 
-// RequireTransportSecurity indicates whether the credentials requires transport security
+// RequireTransportSecurity indicates whether the credentials requires transport security.
 func (a *Authentication) RequireTransportSecurity() bool {
 	return true
 }
 
+// connect performs connection to grpc server.
 func connect(login, password string) (conn *grpc.ClientConn, err error) {
-	// Create the client TLS credentials
+	// Create the client TLS credentials.
 	creds, err := credentials.NewClientTLSFromFile("../cert/server.crt", "")
 	if err != nil {
 		return nil, fmt.Errorf("could not load tls cert: %s", err)
 	}
 
-	// Setup the login/pass
+	// Setup the login/pass.
 	auth := Authentication{
 		Login:    login,
 		Password: password,
@@ -72,6 +73,7 @@ func connect(login, password string) (conn *grpc.ClientConn, err error) {
 	return conn, err
 }
 
+// handleSignals handles signals SIGINT, SIGTERM.
 func handleSignals() <-chan interface{} {
 	sigs := make(chan os.Signal, 1)
 	done := make(chan interface{})
@@ -106,7 +108,7 @@ func main() {
 
 	quit := handleSignals()
 
-	// Enter a lobby of gamers
+	// Enter a lobby of gamers.
 	fmt.Printf("Try to enter the Lobby...\n")
 	_, err = c.EnterTheLobby(context.Background(), &api.EmptyMessage{})
 	if err != nil {
@@ -114,7 +116,7 @@ func main() {
 		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
 	}
 
-	// After all - Leave a lobby of gamers
+	// After all - Leave a lobby of gamers.
 	defer func(c api.GoGameClient) {
 		fmt.Printf("Leave the Lobby...\n")
 		_, err = c.LeaveTheLobby(context.Background(), &api.EmptyMessage{})
