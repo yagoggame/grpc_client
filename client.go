@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -29,6 +30,38 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
+
+// iniDataContainertype is a container of initial data to run server.
+type iniDataContainer struct {
+	port     int
+	ip       string
+	certFile string
+	login    string
+	password string
+}
+
+// myUsage append the standart flag.Usage function with positional arguments.
+func myUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] login password\n", os.Args[0])
+	flag.PrintDefaults()
+}
+
+// init parses cmd line arguments into iniDataContainertype.
+func (d *iniDataContainer) init() {
+	flag.Usage = myUsage
+	flag.IntVar(&d.port, "p", 7777, "port")
+	flag.StringVar(&d.ip, "a", "localhost", "server's host address")
+	flag.StringVar(&d.certFile, "c", "../cert/server.crt", "tls certificate file")
+	flag.Parse()
+
+	if flag.NArg()<2 {
+		flag.Usage()
+		os.Exit(1)
+	}
+	
+	d.login = flag.Arg(0)
+	d.password = flag.Arg(1)
+}
 
 // Authentication holds the login/password.
 type Authentication struct {
@@ -50,20 +83,20 @@ func (a *Authentication) RequireTransportSecurity() bool {
 }
 
 // connect performs connection to grpc server.
-func connect(login, password string) (conn *grpc.ClientConn, err error) {
+func connect(initData *iniDataContainer) (conn *grpc.ClientConn, err error) {
 	// Create the client TLS credentials.
-	creds, err := credentials.NewClientTLSFromFile("../cert/server.crt", "")
+	creds, err := credentials.NewClientTLSFromFile(initData.certFile, "")
 	if err != nil {
 		return nil, fmt.Errorf("could not load tls cert: %s", err)
 	}
 
 	// Setup the login/pass.
 	auth := Authentication{
-		Login:    login,
-		Password: password,
+		Login:    initData.login,
+		Password: initData.password,
 	}
 
-	conn, err = grpc.Dial("localhost:7777",
+	conn, err = grpc.Dial(fmt.Sprintf("%s:%d",initData.ip,initData.port),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(&auth))
 
@@ -90,15 +123,12 @@ func handleSignals() <-chan interface{} {
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		log.Fatalf("Usage: %s login password", os.Args[0])
-	}
-	login := os.Args[1]
-	password := os.Args[2]
+	initData := &iniDataContainer{}
+	initData.init()
 
-	fmt.Printf("Hello: %s\n", login)
+	fmt.Printf("Hello: %s\n", initData.login)
 
-	conn, err := connect(login, password)
+	conn, err := connect(initData)
 	if err != nil {
 		log.Fatalf("connection: %s", err)
 	}
