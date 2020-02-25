@@ -54,11 +54,11 @@ func (d *iniDataContainer) init() {
 	flag.StringVar(&d.certFile, "c", "../cert/server.crt", "tls certificate file")
 	flag.Parse()
 
-	if flag.NArg()<2 {
+	if flag.NArg() < 2 {
 		flag.Usage()
 		os.Exit(1)
 	}
-	
+
 	d.login = flag.Arg(0)
 	d.password = flag.Arg(1)
 }
@@ -96,7 +96,7 @@ func connect(initData *iniDataContainer) (conn *grpc.ClientConn, err error) {
 		Password: initData.password,
 	}
 
-	conn, err = grpc.Dial(fmt.Sprintf("%s:%d",initData.ip,initData.port),
+	conn, err = grpc.Dial(fmt.Sprintf("%s:%d", initData.ip, initData.port),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(&auth))
 
@@ -122,6 +122,30 @@ func handleSignals() <-chan interface{} {
 	return done
 }
 
+func gameFlow(connection api.GoGameClient, quit <-chan interface{}) {
+	fmt.Printf("Try to enter the Lobby...\n")
+	_, err := connection.EnterTheLobby(context.Background(), &api.EmptyMessage{})
+	if err != nil {
+		st := status.Convert(err)
+		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
+	}
+
+	defer func(c api.GoGameClient) {
+		fmt.Printf("Leave the Lobby...\n")
+		_, err = c.LeaveTheLobby(context.Background(), &api.EmptyMessage{})
+		if err != nil {
+			st := status.Convert(err)
+			log.Fatalf("status error when calling LeaveTheLobby: %v: %s", st.Code(), st.Message())
+		}
+	}(connection)
+
+	err = manageGame(connection, quit)
+	if err != nil {
+		st := status.Convert(err)
+		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
+	}
+}
+
 func main() {
 	initData := &iniDataContainer{}
 	initData.init()
@@ -138,27 +162,5 @@ func main() {
 
 	quit := handleSignals()
 
-	// Enter a lobby of gamers.
-	fmt.Printf("Try to enter the Lobby...\n")
-	_, err = c.EnterTheLobby(context.Background(), &api.EmptyMessage{})
-	if err != nil {
-		st := status.Convert(err)
-		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
-	}
-
-	// After all - Leave a lobby of gamers.
-	defer func(c api.GoGameClient) {
-		fmt.Printf("Leave the Lobby...\n")
-		_, err = c.LeaveTheLobby(context.Background(), &api.EmptyMessage{})
-		if err != nil {
-			st := status.Convert(err)
-			log.Fatalf("status error when calling LeaveTheLobby: %v: %s", st.Code(), st.Message())
-		}
-	}(c)
-
-	err = manageGame(c, quit)
-	if err != nil {
-		st := status.Convert(err)
-		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
-	}
+	gameFlow(c, quit)
 }

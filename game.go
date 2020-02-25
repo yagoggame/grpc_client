@@ -37,68 +37,6 @@ const (
 	gameOver
 )
 
-// scanner scans input into the chanel in separate goroutine
-func scanner(stopScan <-chan interface{}) <-chan string {
-	lines := make(chan string)
-	go func(stopScan <-chan interface{}, lines chan<- string) {
-		scanner := bufio.NewScanner(os.Stdin)
-
-	ENDGAME:
-		for scanner.Scan() {
-			select {
-			// scanning is already not needed
-			case <-stopScan:
-				break ENDGAME
-			//continue ccanning
-			default:
-				break
-			}
-			//get scan result
-			txt := scanner.Text()
-			lines <- txt
-		}
-	}(stopScan, lines)
-	return lines
-}
-
-// waitJoinGame initiates joining to a game.
-// returns chanel to report on success or failure and
-// function of cancellation.
-func waitJoinGame(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
-	waitEnded := make(chan interface{})
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func(chan<- interface{}) {
-		_, err := client.JoinTheGame(ctx, &api.EmptyMessage{})
-		if err != nil {
-			st := status.Convert(err)
-			waitEnded <- fmt.Errorf("can't join a game: %v: %s", st.Code(), st.Message())
-		}
-		close(waitEnded)
-	}(waitEnded)
-
-	return waitEnded, cancel
-}
-
-// waitTurnBegin initiates awaiting of player's turn.
-// returns chanel to report on success or failure and
-// function of cancellation.
-func waitTurnBegin(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
-	waitEnded := make(chan interface{})
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func(chan<- interface{}) {
-		_, err := client.WaitTheTurn(ctx, &api.EmptyMessage{})
-		if err != nil {
-			st := status.Convert(err)
-			waitEnded <- fmt.Errorf("can't wait a turn: %v: %s", st.Code(), st.Message())
-		}
-		close(waitEnded)
-	}(waitEnded)
-
-	return waitEnded, cancel
-}
-
 // gameState is type to hold current state of the game.
 type gameState struct {
 	client api.GoGameClient
@@ -110,6 +48,26 @@ type gameState struct {
 	cancel context.CancelFunc
 	//greetings message
 	msg string
+}
+
+func (state *gameState) processUserCommands(cmdLines <-chan string, quit <-chan interface{}) {
+	process := true
+	for process == true {
+		select {
+		//parse user commands.
+		case txt := <-cmdLines:
+			process = state.processKey(txt)
+		//wait for continious actions.
+		case rez := <-state.gameWaiter:
+			state.releaseWaitingResources()
+			state.processWaitResult(rez)
+		//OS quit signal interseptor.
+		case <-quit:
+			process = false
+		}
+		// print a messagi according to current state.
+		state.printInvitation()
+	}
 }
 
 // printInvitation prints invitation before accept user input.
@@ -174,17 +132,18 @@ func (state *gameState) processWaitResult(rez interface{}) {
 
 }
 
-// processKey processes scanned line to find command allowed in current mode.
-func (state *gameState) processKey(txt string) bool {
-	//turn
-	var x, y, n int
-
-	//commands
+func (state *gameState) checkTurnData(txt string) (x, y, n int) {
 	if state.currentMode == performTurn && len(txt) > 1 {
 		if ln, err := fmt.Sscanf(txt, "%d %d", &x, &y); err == nil {
 			n = ln
 		}
 	}
+	return x, y, n
+}
+
+// processKey processes scanned line to find command allowed in current mode.
+func (state *gameState) processKey(txt string) bool {
+	x, y, n := state.checkTurnData(txt)
 
 	switch {
 	case txt == "q":
@@ -221,9 +180,7 @@ func (state *gameState) processKey(txt string) bool {
 
 // manageGame selects a game type, initiate and manage it.
 func manageGame(client api.GoGameClient, quit <-chan interface{}) error {
-	//greetings
 	fmt.Println("Whelcome to a Go game")
-	// game state
 	state := &gameState{currentMode: noGame, client: client}
 	defer state.releaseWaitingResources()
 	defer state.releaseGameResources()
@@ -236,24 +193,69 @@ func manageGame(client api.GoGameClient, quit <-chan interface{}) error {
 		close(stopScan)
 	}(stopScan)
 
-	//main cycle
-	process := true
-	for process == true {
-		select {
-		//parse user commands.
-		case txt := <-cmdLines:
-			process = state.processKey(txt)
-		//wait for continious actions.
-		case rez := <-state.gameWaiter:
-			state.releaseWaitingResources()
-			state.processWaitResult(rez)
-		//OS quit signal interseptor.
-		case <-quit:
-			process = false
-		}
-		// print a messagi according to current state.
-		state.printInvitation()
-	}
+	state.processUserCommands(cmdLines, quit)
 
 	return nil
+}
+
+// scanner scans input into the chanel in separate goroutine
+func scanner(stopScan <-chan interface{}) <-chan string {
+	lines := make(chan string)
+	go func(stopScan <-chan interface{}, lines chan<- string) {
+		scanner := bufio.NewScanner(os.Stdin)
+
+	ENDGAME:
+		for scanner.Scan() {
+			select {
+			// scanning is already not needed
+			case <-stopScan:
+				break ENDGAME
+			//continue ccanning
+			default:
+				break
+			}
+			//get scan result
+			txt := scanner.Text()
+			lines <- txt
+		}
+	}(stopScan, lines)
+	return lines
+}
+
+// waitJoinGame initiates joining to a game.
+// returns chanel to report on success or failure and
+// function of cancellation.
+func waitJoinGame(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
+	waitEnded := make(chan interface{})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func(chan<- interface{}) {
+		_, err := client.JoinTheGame(ctx, &api.EmptyMessage{})
+		if err != nil {
+			st := status.Convert(err)
+			waitEnded <- fmt.Errorf("can't join a game: %v: %s", st.Code(), st.Message())
+		}
+		close(waitEnded)
+	}(waitEnded)
+
+	return waitEnded, cancel
+}
+
+// waitTurnBegin initiates awaiting of player's turn.
+// returns chanel to report on success or failure and
+// function of cancellation.
+func waitTurnBegin(client api.GoGameClient) (<-chan interface{}, context.CancelFunc) {
+	waitEnded := make(chan interface{})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func(chan<- interface{}) {
+		_, err := client.WaitTheTurn(ctx, &api.EmptyMessage{})
+		if err != nil {
+			st := status.Convert(err)
+			waitEnded <- fmt.Errorf("can't wait a turn: %v: %s", st.Code(), st.Message())
+		}
+		close(waitEnded)
+	}(waitEnded)
+
+	return waitEnded, cancel
 }
