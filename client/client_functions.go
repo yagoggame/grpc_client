@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with yagogame.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package client
 
 import (
 	"context"
@@ -31,36 +31,24 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// iniDataContainertype is a container of initial data to run server.
-type iniDataContainer struct {
-	port     int
-	ip       string
-	certFile string
-	login    string
-	password string
+// IniDataContainertype is a container of initial data to run server.
+type IniDataContainer struct {
+	//Port is the port of grpc service
+	Port     int
+	//IP is the ip address of grpc service
+	IP       string
+	//CertFile is the path to certificate file of grpc service
+	CertFile string
+	//Login is the user's login
+	Login    string
+	//Password is the user's password
+	Password string
 }
 
 // myUsage append the standart flag.Usage function with positional arguments.
 func myUsage() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] login password\n", os.Args[0])
 	flag.PrintDefaults()
-}
-
-// init parses cmd line arguments into iniDataContainertype.
-func (d *iniDataContainer) init() {
-	flag.Usage = myUsage
-	flag.IntVar(&d.port, "p", 7777, "port")
-	flag.StringVar(&d.ip, "a", "localhost", "server's host address")
-	flag.StringVar(&d.certFile, "c", "../cert/server.crt", "tls certificate file")
-	flag.Parse()
-
-	if flag.NArg() < 2 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	d.login = flag.Arg(0)
-	d.password = flag.Arg(1)
 }
 
 // Authentication holds the login/password.
@@ -82,32 +70,33 @@ func (a *Authentication) RequireTransportSecurity() bool {
 	return true
 }
 
-// connect performs connection to grpc server.
-func connect(initData *iniDataContainer) (conn *grpc.ClientConn, err error) {
+// Connect performs connection to grpc server.
+func Connect(initData *IniDataContainer) (conn *grpc.ClientConn, err error) {
 	// Create the client TLS credentials.
-	creds, err := credentials.NewClientTLSFromFile(initData.certFile, "")
+	creds, err := credentials.NewClientTLSFromFile(initData.CertFile, "")
 	if err != nil {
 		return nil, fmt.Errorf("could not load tls cert: %s", err)
 	}
 
 	// Setup the login/pass.
 	auth := Authentication{
-		Login:    initData.login,
-		Password: initData.password,
+		Login:    initData.Login,
+		Password: initData.Password,
 	}
 
-	conn, err = grpc.Dial(fmt.Sprintf("%s:%d", initData.ip, initData.port),
+	conn, err = grpc.Dial(fmt.Sprintf("%s:%d", initData.IP, initData.Port),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(&auth))
 
 	if err != nil {
 		return nil, fmt.Errorf("did not connect: %s", err)
 	}
+
 	return conn, err
 }
 
-// handleSignals handles signals SIGINT, SIGTERM.
-func handleSignals() <-chan interface{} {
+// HandleSignals handles signals SIGINT, SIGTERM.
+func HandleSignals() <-chan interface{} {
 	sigs := make(chan os.Signal, 1)
 	done := make(chan interface{})
 
@@ -122,7 +111,8 @@ func handleSignals() <-chan interface{} {
 	return done
 }
 
-func gameFlow(connection api.GoGameClient, quit <-chan interface{}) {
+// GameFlow performs main interactive procedure to interact with the game
+func GameFlow(connection api.GoGameClient, quit <-chan interface{}) {
 	fmt.Printf("Try to enter the Lobby...\n")
 	_, err := connection.EnterTheLobby(context.Background(), &api.EmptyMessage{})
 	if err != nil {
@@ -144,23 +134,4 @@ func gameFlow(connection api.GoGameClient, quit <-chan interface{}) {
 		st := status.Convert(err)
 		log.Fatalf("status error when calling EnterTheLobby: %v: %s", st.Code(), st.Message())
 	}
-}
-
-func main() {
-	initData := &iniDataContainer{}
-	initData.init()
-
-	fmt.Printf("Hello: %s\n", initData.login)
-
-	conn, err := connect(initData)
-	if err != nil {
-		log.Fatalf("connection: %s", err)
-	}
-	defer conn.Close()
-
-	c := api.NewGoGameClient(conn)
-
-	quit := handleSignals()
-
-	gameFlow(c, quit)
 }

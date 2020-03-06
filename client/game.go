@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with yagogame.  If not, see <https://www.gnu.org/licenses/>.
 
-package main
+package client
 
 import (
 	"bufio"
@@ -102,7 +102,7 @@ func (state *gameState) releaseGameResources() {
 	if state.currentMode == waitTurn || state.currentMode == performTurn || state.currentMode == gameOver {
 		if _, err := state.client.LeaveTheGame(context.Background(), &api.EmptyMessage{}); err != nil {
 			st := status.Convert(err)
-			fmt.Println("Error, while leaving a game: %v: %s", st.Code(), st.Message())
+			fmt.Printf("Error, while leaving a game: %v: %s", st.Code(), st.Message())
 		} else {
 			state.currentMode = noGame
 		}
@@ -167,7 +167,7 @@ func (state *gameState) processKey(txt string) bool {
 				fmt.Println(st.Message())
 				break
 			}
-			fmt.Println("Error, while leaving a game: %v: %s", st.Code(), st.Message())
+			fmt.Printf("Error, while leaving a game: %v: %s", st.Code(), st.Message())
 		}
 		state.currentMode = waitTurn
 		state.gameWaiter, state.cancel = waitTurnBegin(state.client)
