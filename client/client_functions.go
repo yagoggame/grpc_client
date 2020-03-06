@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// IniDataContainertype is a container of initial data to run server.
+// IniDataContainer is a container of initial data to run server.
 type IniDataContainer struct {
 	//Port is the port of grpc service
 	Port     int

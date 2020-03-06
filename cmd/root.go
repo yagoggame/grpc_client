@@ -14,6 +14,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
+
 package cmd
 
 import (
@@ -31,7 +32,6 @@ import (
 
 var (
 	cfgFile  string
-	initData client.IniDataContainer
 	// rootCmd represents the base command when called without any subcommands
 	rootCmd = &cobra.Command{
 		Use:   "grpc_client",
@@ -59,13 +59,17 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.grpc_client.yaml)")
-	rootCmd.PersistentFlags().StringVarP(&initData.Login, "login", "l", "", "login to use")
-	rootCmd.MarkPersistentFlagRequired("login")
-	rootCmd.PersistentFlags().StringVarP(&initData.Password, "password", "p", "", "password to use")
-	rootCmd.MarkPersistentFlagRequired("password")
-	rootCmd.PersistentFlags().StringVarP(&initData.IP, "address", "A", "localhost", "ip address of grpc_server")
-	rootCmd.PersistentFlags().IntVarP(&initData.Port, "port", "P", 7777, "port of grpc_server")
-	rootCmd.PersistentFlags().StringVarP(&initData.CertFile, "cert", "C", "", "ip address of grpc_server")
+	
+	rootCmd.PersistentFlags().StringP("login", "l", "", "login to use")
+	viper.BindPFlag("login", rootCmd.Flag("login"))
+	rootCmd.PersistentFlags().StringP("password", "p", "", "password to use")
+	viper.BindPFlag("password", rootCmd.Flag("password"))
+	rootCmd.PersistentFlags().StringP("address", "A", "localhost", "ip address of grpc_server")
+	viper.BindPFlag("address", rootCmd.Flag("address"))
+	rootCmd.PersistentFlags().IntP("port", "P", 7777, "port of grpc_server")
+	viper.BindPFlag("port", rootCmd.Flag("port"))
+	rootCmd.PersistentFlags().StringP("cert", "C", "", "ip address of grpc_server")
+	viper.BindPFlag("cert", rootCmd.Flag("cert"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -94,10 +98,24 @@ func initConfig() {
 	}
 }
 
+func iniFromViper(initData *client.IniDataContainer, command *cobra.Command) {
+	initData.Port = viper.GetInt("port") 
+	initData.IP = viper.GetString("address") 
+	initData.CertFile = viper.GetString("cert")
+	initData.Login = viper.GetString("login")
+	initData.Password = viper.GetString("password")
+	if len(initData.Login)<1 || len(initData.Password)<1 {
+		log.Fatalf("login and password should be specified.\n%s",command.UsageString())
+	}
+}
+
 func mainCmdFnc(cmd *cobra.Command, args []string) {
+	initData := new(client.IniDataContainer)
+	iniFromViper(initData, cmd)
+	
 	fmt.Printf("Hello: %s\n", initData.Login)
 
-	conn, err := client.Connect(&initData)
+	conn, err := client.Connect(initData)
 	if err != nil {
 		log.Fatalf("connection: %s", err)
 	}

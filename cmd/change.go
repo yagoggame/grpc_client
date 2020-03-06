@@ -14,6 +14,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
+
 package cmd
 
 import (
@@ -43,6 +44,8 @@ func init() {
 }
 
 func changeCmdFnc(cmd *cobra.Command, args []string) {
+	initData := new(client.IniDataContainer)
+	iniFromViper(initData, cmd)
 	newLogin := args[0]
 	newPassword := args[1]
 
@@ -55,7 +58,7 @@ func changeCmdFnc(cmd *cobra.Command, args []string) {
 		log.Fatal("Canceled")
 	}
 
-	conn, err := client.Connect(&initData)
+	conn, err := client.Connect(initData)
 	if err != nil {
 		log.Fatalf("connection: %s", err)
 	}

@@ -27,10 +27,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type GameMode int
+type gameMode int
 
 const (
-	noGame GameMode = iota
+	noGame gameMode = iota
 	waitJoin
 	waitTurn
 	performTurn
@@ -41,7 +41,7 @@ const (
 type gameState struct {
 	client api.GoGameClient
 	//currentMode
-	currentMode GameMode
+	currentMode gameMode
 	//chanel to await for server continious actions
 	gameWaiter <-chan interface{}
 	//cancel function for server continious actions
