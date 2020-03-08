@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	cfgFile  string
+	cfgFile string
 	// rootCmd represents the base command when called without any subcommands
 	rootCmd = &cobra.Command{
 		Use:   "grpc_client",
@@ -59,7 +59,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.grpc_client.yaml)")
-	
+
 	rootCmd.PersistentFlags().StringP("login", "l", "", "login to use")
 	viper.BindPFlag("login", rootCmd.Flag("login"))
 	rootCmd.PersistentFlags().StringP("password", "p", "", "password to use")
@@ -68,7 +68,7 @@ func init() {
 	viper.BindPFlag("address", rootCmd.Flag("address"))
 	rootCmd.PersistentFlags().IntP("port", "P", 7777, "port of grpc_server")
 	viper.BindPFlag("port", rootCmd.Flag("port"))
-	rootCmd.PersistentFlags().StringP("cert", "C", "", "ip address of grpc_server")
+	rootCmd.PersistentFlags().StringP("cert", "C", "", "file with TLS certificate")
 	viper.BindPFlag("cert", rootCmd.Flag("cert"))
 }
 
@@ -99,20 +99,20 @@ func initConfig() {
 }
 
 func iniFromViper(initData *client.IniDataContainer, command *cobra.Command) {
-	initData.Port = viper.GetInt("port") 
-	initData.IP = viper.GetString("address") 
+	initData.Port = viper.GetInt("port")
+	initData.IP = viper.GetString("address")
 	initData.CertFile = viper.GetString("cert")
 	initData.Login = viper.GetString("login")
 	initData.Password = viper.GetString("password")
-	if len(initData.Login)<1 || len(initData.Password)<1 {
-		log.Fatalf("login and password should be specified.\n%s",command.UsageString())
+	if len(initData.Login) < 1 || len(initData.Password) < 1 {
+		log.Fatalf("login and password should be specified.\n%s", command.UsageString())
 	}
 }
 
 func mainCmdFnc(cmd *cobra.Command, args []string) {
 	initData := new(client.IniDataContainer)
 	iniFromViper(initData, cmd)
-	
+
 	fmt.Printf("Hello: %s\n", initData.Login)
 
 	conn, err := client.Connect(initData)

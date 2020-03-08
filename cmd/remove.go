@@ -45,7 +45,7 @@ func init() {
 func removeCmdFnc(cmd *cobra.Command, args []string) {
 	initData := new(client.IniDataContainer)
 	iniFromViper(initData, cmd)
-	
+
 	fmt.Printf("do you realy want to remove %q user?\ntype \"yes\" if you do.\n", initData.Login)
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {

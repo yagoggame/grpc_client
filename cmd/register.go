@@ -45,7 +45,7 @@ func init() {
 func registerCmdFnc(cmd *cobra.Command, args []string) {
 	initData := new(client.IniDataContainer)
 	iniFromViper(initData, cmd)
-	
+
 	fmt.Printf("do you realy want to register %q user on service?\ntype \"yes\" if you do.\n", initData.Login)
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {

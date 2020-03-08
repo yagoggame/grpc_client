@@ -34,13 +34,13 @@ import (
 // IniDataContainer is a container of initial data to run server.
 type IniDataContainer struct {
 	//Port is the port of grpc service
-	Port     int
+	Port int
 	//IP is the ip address of grpc service
-	IP       string
+	IP string
 	//CertFile is the path to certificate file of grpc service
 	CertFile string
 	//Login is the user's login
-	Login    string
+	Login string
 	//Password is the user's password
 	Password string
 }
