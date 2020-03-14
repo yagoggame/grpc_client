@@ -23,11 +23,17 @@ import (
 	"os"
 
 	"github.com/yagoggame/api"
+	"github.com/yagoggame/grpc_client/terminal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type gameMode int
+
+type serverGameState struct {
+	gameData *api.State
+	err      error
+}
 
 const (
 	noGame gameMode = iota
@@ -48,6 +54,8 @@ type gameState struct {
 	cancel context.CancelFunc
 	//greetings message
 	msg string
+	//state of game obtained from server
+	gameData *api.State
 }
 
 func (state *gameState) processUserCommands(cmdLines <-chan string, quit <-chan interface{}) {
@@ -59,6 +67,7 @@ func (state *gameState) processUserCommands(cmdLines <-chan string, quit <-chan 
 			process = state.processKey(txt)
 		//wait for continious actions.
 		case rez := <-state.gameWaiter:
+			terminal.CallClear()
 			state.releaseWaitingResources()
 			state.processWaitResult(rez)
 		//OS quit signal interseptor.
@@ -79,9 +88,11 @@ func (state *gameState) printInvitation() {
 	case waitJoin:
 		msg = fmt.Sprintln("\nWaiting for the game to start:\n [q]: - quit from the Lobby.")
 	case waitTurn:
-		msg = fmt.Sprintln("\nWaiting for the turn:\n [q]: - quit from the Lobby.\n [e]: - exith this Game.")
+		msg = stringFromGameData(state.gameData)
+		msg += fmt.Sprintln("\nWaiting for the turn:\n [q]: - quit from the Lobby.\n [e]: - exith this Game.")
 	case performTurn:
-		msg = fmt.Sprintln("\nPlease, make a turn:\n [q]: - quit from the Lobby.\n [e]: - exith this Game.\n [xxx yyy]: - enter coordinates to make a turn.")
+		msg = stringFromGameData(state.gameData)
+		msg += fmt.Sprintln("\nPlease, make a turn:\n [q]: - quit from the Lobby.\n [e]: - exith this Game.\n [xxx yyy]: - enter coordinates to make a turn.")
 	case gameOver:
 		msg = fmt.Sprintln("\nThe Game is over:\n [q]: - quit from the Lobby.\n [e]: - exith this Game.")
 	}
@@ -100,6 +111,7 @@ func (state *gameState) releaseWaitingResources() {
 //releaseGameResources releases game specific resources.
 func (state *gameState) releaseGameResources() {
 	if state.currentMode == waitTurn || state.currentMode == performTurn || state.currentMode == gameOver {
+		terminal.CallClear()
 		if _, err := state.client.LeaveTheGame(context.Background(), &api.EmptyMessage{}); err != nil {
 			st := status.Convert(err)
 			fmt.Printf("Error, while leaving a game: %v: %s", st.Code(), st.Message())
@@ -112,22 +124,28 @@ func (state *gameState) releaseGameResources() {
 
 // processWaitResult waits of waiting function result and process it.
 func (state *gameState) processWaitResult(rez interface{}) {
+	stateErr := rez.(*serverGameState)
+
 	switch state.currentMode {
 	case waitJoin:
-		if err, ok := rez.(error); ok {
+		if stateErr.err != nil {
+			state.gameData = nil
 			state.currentMode = noGame
-			fmt.Println(err)
+			fmt.Println(stateErr.err)
 			break
 		}
 		state.currentMode = waitTurn
+		state.gameData = stateErr.gameData
 		state.gameWaiter, state.cancel = waitTurnBegin(state.client)
 	case waitTurn:
-		if err, ok := rez.(error); ok {
+		if stateErr.err != nil {
+			state.gameData = nil
 			state.currentMode = gameOver
-			fmt.Println(err)
+			fmt.Println(stateErr.err)
 			break
 		}
 		state.currentMode = performTurn
+		state.gameData = stateErr.gameData
 	}
 
 }
@@ -160,16 +178,20 @@ func (state *gameState) processKey(txt string) bool {
 		state.releaseGameResources()
 
 	case state.currentMode == performTurn && n == 2:
-		_, err := state.client.MakeTurn(context.Background(), &api.TurnMessage{X: int64(x), Y: int64(y)})
+		terminal.CallClear()
+		gameData, err := state.client.MakeTurn(context.Background(), &api.TurnMessage{X: int64(x), Y: int64(y)})
 		if err != nil {
 			st := status.Convert(err)
 			if st.Code() == codes.InvalidArgument {
 				fmt.Println(st.Message())
 				break
 			}
-			fmt.Printf("Error, while leaving a game: %v: %s", st.Code(), st.Message())
+			// codes.InvalidArgument - the last game data is stil actual
+			state.gameData = nil
+			fmt.Printf("Error, while making a turn. Leave the game: %v: %s", st.Code(), st.Message())
 		}
 		state.currentMode = waitTurn
+		state.gameData = gameData
 		state.gameWaiter, state.cancel = waitTurnBegin(state.client)
 
 	default:
@@ -230,10 +252,20 @@ func waitJoinGame(client api.GoGameClient) (<-chan interface{}, context.CancelFu
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func(chan<- interface{}) {
-		_, err := client.JoinTheGame(ctx, &api.EmptyMessage{})
+		terminal.CallClear()
+		gameState, err := client.JoinTheGame(ctx, &api.EmptyMessage{})
+
 		if err != nil {
 			st := status.Convert(err)
-			waitEnded <- fmt.Errorf("can't join a game: %v: %s", st.Code(), st.Message())
+			waitEnded <- &serverGameState{
+				gameData: nil,
+				err:      fmt.Errorf("can't join a game: %v: %s", st.Code(), st.Message()),
+			}
+		}
+
+		waitEnded <- &serverGameState{
+			gameData: gameState,
+			err:      nil,
 		}
 		close(waitEnded)
 	}(waitEnded)
@@ -249,10 +281,19 @@ func waitTurnBegin(client api.GoGameClient) (<-chan interface{}, context.CancelF
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func(chan<- interface{}) {
-		_, err := client.WaitTheTurn(ctx, &api.EmptyMessage{})
+		gameState, err := client.WaitTheTurn(ctx, &api.EmptyMessage{})
+
 		if err != nil {
 			st := status.Convert(err)
-			waitEnded <- fmt.Errorf("can't wait a turn: %v: %s", st.Code(), st.Message())
+			waitEnded <- &serverGameState{
+				gameData: nil,
+				err:      fmt.Errorf("can't wait a turn: %v: %s", st.Code(), st.Message()),
+			}
+		}
+
+		waitEnded <- &serverGameState{
+			gameData: gameState,
+			err:      nil,
 		}
 		close(waitEnded)
 	}(waitEnded)
